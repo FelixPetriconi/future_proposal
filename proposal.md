@@ -1,7 +1,10 @@
 
 Document number:  Nnnnn=yy-nnnn
+
 Date:  yyyy-mm-dd
+
 Project:  Programming Language C++, Library Working Group
+
 Reply-to:  Sean Parent sean.parent@gmail.com, David Denkel camior@gmail.com, Felix Petriconi felix@petriconi.net
 
 
@@ -15,26 +18,37 @@ From our point the design of std::future and its planned extension with the C++1
 # III. Motivation and Scope
 
 ## Copyable future
-A common use case in execution graphs is that the result of an asynchronous calculation is needed as an argument to more than one further anychronous operation. The current design of std::future is limited to one continuous operation, to one .then() continuation, because it accepts only a std::future as argument.
+A common use case in execution graphs is that the result of an asynchronous calculation is needed as an argument to more than one further asynchronous operation. The current design of std::future is limited to one continuous operation, to one .then() continuation, because it accepts only a std::future as argument.
 
+So it is necessary that futures become copyable and the following example of multiple continuatons into different directions would be possible. 
 
 ~~~C++
+   std::future<> a;
    a.then([]{ /* do something */ });
    a.then([]{ /* also do something else. */ }
 ~~~
 
-I'm fairly convinced that this can be done without compromising efficiency by making use of rvalues.
 
-2) cancellation
+
+## Cancellation of futures
   destructing a future should cause any unexpected tasks to become no-ops. If this feature isn't build in it needs to composable without creating a new future type.
 
-3) simplified interface and error handling (call the continuation with T not with future<T>!).
+## Simplified interface
 
-4) scales to single threaded environments - either get rid of get() and wait() or define when and how tasks can be promoted to immediate execution and support get() and wait() in such circumstances without blocking. Note that get() and wait() as they are currently defined are potential deadlocks in any system without unlimited concurrency (i.e., in any real system).
+simplified interface and error handling (call the continuation with T not with future<T>!).
+
+
+## Scalarbility 
+
+scales to single threaded environments - either get rid of get() and wait() or define when and how tasks can be promoted to immediate execution and support get() and wait() in such circumstances without blocking. Note that get() and wait() as they are currently defined are potential deadlocks in any system without unlimited concurrency (i.e., in any real system).
+
+##  Executors
 
 5) ability to specify the scheduler/executor for continuations and override and any point in the chain
 
-6) joins (all() & first())
+## Joins 
+
+joins (when_all() & when_any())
 
 7) Ideally this is all paired with a rich standard tasking system, and forms the basis for a rich channel system for use with co-routines.
 
