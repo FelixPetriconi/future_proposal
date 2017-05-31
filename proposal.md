@@ -31,9 +31,9 @@ A common use case in graphs of execution is that the result of an asynchronous c
 So it is necessary that futures become copyable and the following example of multiple continuatons into different directions would be possible. 
 
 ~~~C++
-   std::future<> a;
-   a.then([]{ /* do something */ });
-   a.then([]{ /* also do something else. */ }
+   std::future<int> a;
+   a.then([](int x){ /* do something */ });
+   a.then([](int x){ /* also do something else. */ }
 ~~~
 
 
@@ -42,6 +42,7 @@ So it is necessary that futures become copyable and the following example of mul
 Because of different reasons it might be that the result of an asynchronous operation and its continuation is not needed any more; e.g. the user has cancelled an operation in the user interface. So it is neecessary that a future can be destructed without the execution of its associated task. In this case all attached continuations should not be executed as well. The std::future from C++11 is required to wait for its fulfillment even the result might not be needed any more. From our point of view this is a waste of resources.
 
 (destructing a future should cause any unexpected tasks to become no-ops. If this feature isn't build in it needs to composable without creating a new future type.)
+
 
 ## Simplified interface
 
@@ -52,22 +53,48 @@ With the C++17 TS interface it is necessary that the associated operation of a c
   auto next = getTheAnswer.then([](std::future<int> x) { std::cout << x.get(); };
 ~~~
 
-In case of a when_all() continuation the associated operation must be called with a future<tuple<future<Args>...>>. (In the following example a possible argument declaration of "auto x" is for illustrational purpose written explicitly.)
+In case of a when_all() continuation the associated operation must be called with a future<tuple<future<Args>...>>. (In the following example a possible parameter declaration of "auto x" is for illustrational purpose written explicitly.)
 
 ~~~C++
-  auto a = std::async([]{ return 40; });
-  auto b = std::async([]{ return 2; });
+  auto ans = std::async([]{ return 40; });
+  auto wer = std::async([]{ return 2; });
   
-  auto answer = std::when_all(std::move(a), std::move(b)).then( 
+  auto answer = std::when_all(std::move(ans), std::move(wer)).then( 
     [](std::future<std::tuple<std::future<int>, std::future<int>>> x) {
       auto t = x.get();
       std::cout << get<0>(t).get() + get<1>(t).get();
     });
 ~~~
 
-This makes the code much more difficult to reason about, because as a first step the tuple must be extracted from the future and then all values for the actual calculation of the continuation must be accessed through the tuple and then through futures.
+This makes the code much more difficult to reason about, because as a first step the tuple must be extracted from the future and then all values for the actual calculation of the continuation must be accessed through the tuple and then through the futures.
 So either the interface of the callable operation gets "infected" by the interface of std::future or an additional layer of extraction is necessary to invoke the operation. 
-Both choices are sub-optimal from our point of view and they can be avoided by instead allowing to call the continuations by value
+Both choices are sub-optimal from our point of view and they can be avoided by instead allowing to call the continuations by value.
+
+One argument for passing a future to the continuation is, that the future encapsulates either the real value or an occured exception. That means that everyone has to use the more complicated interface by passing features, even there might be use cases where never an exception might occur. From our point of view this is against the general principle within C++, that one only should have to pay for what one really needs.
+For cases that an error handling is necessary, a new recover method serves this purpose.
+
+~~~C++
+  auto getTheAnswer = [] {
+    throw std::exception("Bad thing happened: Vogons appeared");
+    std::cout << "I have got the answer\n";
+    return 42;
+  };
+
+  auto handleTheAnswer = [](int v) { 
+    if (!v) std::cout << "No answer\n"; return v; 
+  };
+
+  auto f = stlab::async(stlab::default_scheduler(), getTheAnswer)
+    .recover([](std::future<int> result) {
+      if (result.error()) {
+        std::cout << "Listen to Vogon poetry!\n";
+        return 0;
+      }
+      return result.get_try().value();
+  }).then(handleTheAnswer);
+~~~
+
+
 
 // TODO Erroro handling
 simplified interface and error handling (call the continuation with T not with future<T>!).
@@ -77,11 +104,12 @@ simplified interface and error handling (call the continuation with T not with f
 
 scales to single threaded environments - either get rid of get() and wait() or define when and how tasks can be promoted to immediate execution and support get() and wait() in such circumstances without blocking. Note that get() and wait() as they are currently defined are potential deadlocks in any system without unlimited concurrency (i.e., in any real system).
 
+
 ##  Executors
 
-Many of the todays used UI libraries allow changes of the UI elements only from within the main-event-loop or main-thread. But with the approach of C++11 and the C++17 TS it is not easily possible to perform changes in the UI, because it is not possible to define in which thread a future and a continuation shall be executed.
+Many of the todays used UI libraries allow changes of the UI elements only from within the main-event-loop or main-thread. But with the design of std::async and the continuations of C++11 and the C++17 TS it is not easily possible to perform changes in the UI, because it is not possible to define in which thread a future or a continuation shall be executed.
 
-So we propose that it should be possible to specify an executor while using std::async to create a new future or pass it as additional argument when definining a continuation.
+So we propose that it should be possible to specify an executor while using std::async to create a new future or pass it as additional argument when calling a continuation.
 
 Example:
 
@@ -92,13 +120,17 @@ Example:
     calculateTheAnswer.then( QtMainLoopExecutor{}, [this](int a) { _theAnswerDisplayField.setValue(a); } ); 
 ~~~
 
-Here the first future shall be executed on the default executor, which we think should be the systems thread pool. And then the continuation shall run on an executor that schedules all tasks to be executed within the Qt main loop.
+Here the first future shall be executed on the default executor, which we think should be the system's thread pool. And then the continuation shall run on an executor that schedules all tasks to be executed within the Qt main loop.
+
 
 ## Joins 
 
-As it is specified in the C++17 TS, there should be joins like when_all and when_any. But as already pointed out above the attached function object should take its arguments per value. 
+As it is specified in the C++17 TS, there should be joins as when_all and when_any. But as already pointed out above the attached function object should take its arguments per value and not by future<T>.
 
-Now it would be possible with the support of cancellation of futures that in case of a single failing future for a when_all, all not started futures are cancelled, because the when_all cannot be fullfilled any more. The same is valid for a when_any. So as soon as one future is fullfilled, all other non started futures could be cancelled. 
+Now it would be possible with the support of cancellation of futures that in case of a single failing future for a when_all, all not started futures are cancelled, because the overall when_all cannot be fullfilled any more. The same is valid for a when_any. So as soon as one future is fullfilled, all other non started futures could be cancelled. 
+
+
+
 
 
 7) Ideally this is all paired with a rich standard tasking system, and forms the basis for a rich channel system for use with co-routines.
