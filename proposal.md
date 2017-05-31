@@ -5,7 +5,7 @@ Date:  yyyy-mm-dd
 
 Project:  Programming Language C++, Library Working Group
 
-Reply-to:  Sean Parent sean.parent@gmail.com, David Denkel camior@gmail.com, Felix Petriconi felix@petriconi.net
+Reply-to:  Sean Parent sean.parent@gmail.com, David Sankel camior@gmail.com, Felix Petriconi felix@petriconi.net
 
 
 # I. Table of Contents
