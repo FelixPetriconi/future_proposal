@@ -12,13 +12,13 @@ Reply-to:  Sean Parent sean.parent@gmail.com, David Denkel camior@gmail.com, Fel
 
 # II. Introduction
 
-From our point the design of std::future and its planned extension with the C++17 Concurrency TS can be improved in respect to performance, scalarbility and composability of its components.
+From our point the design of std::future and its planned extensio, which is currently described in the C++17 Concurrency TS, can be improved in respect to performance, scalarbility and composability of its components.
 
 
 # III. Motivation and Scope
 
 ## Copyable future
-A common use case in execution graphs is that the result of an asynchronous calculation is needed as an argument to more than one further asynchronous operation. The current design of std::future is limited to one continuous operation, to one .then() continuation, because it accepts only a std::future as argument.
+A common use case in graphs of execution is that the result of an asynchronous calculation is needed as an argument for more than one further asynchronous operation. The current design of std::future is limited to one continuous operation, to one .then() continuation, because it accepts only a std::future as argument.
 
 So it is necessary that futures become copyable and the following example of multiple continuatons into different directions would be possible. 
 
@@ -29,12 +29,18 @@ So it is necessary that futures become copyable and the following example of mul
 ~~~
 
 
-
 ## Cancellation of futures
-  destructing a future should cause any unexpected tasks to become no-ops. If this feature isn't build in it needs to composable without creating a new future type.
+
+Because of different reasons it might be that the result of an asynchronous operation and its continuation is not needed any more; e.g. the user has cancelled an operation in the user interface. So it is neecessary that a future can be destructed without the execution of its associated task. In this case all attached continuations should not be executed as well. The std::future from C++11 is required to wait for its fulfillment even the result might not be needed any more. From our point of view this is a waste of resources.
+
+(destructing a future should cause any unexpected tasks to become no-ops. If this feature isn't build in it needs to composable without creating a new future type.)
 
 ## Simplified interface
 
+With the C++17 TS interface it is necessary that the associated operation of a continuation is invoked with a future<T>. In case of a when_all() continuation the associated operation must be called with a tuple<future<Args>...>. This make the code much more difficult to reason about, because all arguments must first be extracted from the tuple and then from the future before they can be passed to the next operation. So either the interface of the callable operation gets "infected" by the interface of std::future or an additional layer of extraction is necessary to invoke the operation. 
+Both choices are sub-optimal from our point of view and they can be avoided by allowing letting the  possible 
+
+be extracted with a get<>()  of a continuation The interface of std::future is more complicated than it has to be. 
 simplified interface and error handling (call the continuation with T not with future<T>!).
 
 
