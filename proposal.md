@@ -1,6 +1,5 @@
-
 ---
-This document is work in progress!
+Towards a Good Future
 ---
 
 Document number:  Nnnnn=yy-nnnn
@@ -11,13 +10,17 @@ Project:  Programming Language C++, Library Working Group
 
 Reply-to:  Sean Parent sean.parent{at}gmail[dotcom], David Sankel camior{at}gmail[dotcom], Felix Petriconi felix{at}petriconi[dotnet]
 
+<!--
+TODO: Insert Tony-table here. Tony-tables are before/after comparisons
+-->
 
 # I. Table of Contents
 
 # II. Introduction
 
-From our point the design of std::future and its planned extension, which is currently described in the C++17 Concurrency TS, can be improved in respect to performance, scalarbility and composability of its components.
+The standard library needs a high-quality vocabulary type to represent asynchronous values. Having many variants of this concept in the wild is a pain point, but, even worse, the judicious use of "callback soup" makes asynchronous code difficult to develop and maintain. Unfortunately, based on the experience of the authors in real-world, production applications, neither the crippled `std::future`, nor the extensions proposed in the Concurrency TS are going to remedy the situation.
 
+In the negative, we recommend against adoption of the `std::future` related extensions in the Concurency TS. In the positive, we provide recommendations for an alternative that we feel will meet the demands of real world applications and, more importantly, gain widespread adoption.
 
 # III. Motivation and Scope
 
