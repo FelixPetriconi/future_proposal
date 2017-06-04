@@ -29,7 +29,7 @@ In the negative, we recommend against adoption of the `std::future` related exte
 
 ## Copyable future
 
-A common use case in graphs of execution is that the result of an asynchronous calculation is needed as an argument for more than one further asynchronous operation. The current design of std::future is limited to one continuous operation, to one .then() continuation, because it accepts only a std::future as argument.
+A common use case in graphs of execution is that the result of an asynchronous calculation is needed as an argument for more than one further asynchronous operation. The current design of std::future is limited to one continuous operation, to one .then() continuation, because it accepts only an r-value std::future as argument. So the std::future must be moved into the continuation and then cannot be used as an argument for an other continuation.
 
 So it is necessary that futures become copyable and the following example of multiple continuatons into different directions would be possible. 
 
@@ -42,9 +42,11 @@ So it is necessary that futures become copyable and the following example of mul
 
 ## Cancellation of futures
 
-Because of different reasons it might be that the result of an asynchronous operation and its continuation is not needed any more; e.g. the user has cancelled an operation in the user interface. So it is neecessary that a future can be destructed without the execution of its associated task. In this case all attached continuations should not be executed as well. The std::future from C++11 is required to wait for its fulfillment even the result might not be needed any more. From our point of view this is a waste of resources.
+Because of different reasons it might be that the result of an asynchronous operation and its continuation is not needed any more; e.g. the user has cancelled an operation in the user interface. The current design of std::future and the TS does not support any kind of cancellation. So it is required to wait for its fulfillment even the result might not be needed any more. On systems with limited resources, e.g. mobile devices, this is a waste of resources.
+Even it is possible to implement cancellation on top of the existing design, it would be preferable, if the futures would have this capability by themselfs. 
 
-(destructing a future should cause any unexpected tasks to become no-ops. If this feature isn't build in it needs to composable without creating a new future type.)
+So we think that it is neecessary that a future can be destructed without the execution of its associated task. In such a situation all attached continuations should not be executed as well. 
+
 
 
 ## Simplified interface
@@ -59,10 +61,10 @@ With the C++17 TS interface it is necessary that the associated operation of a c
 In case of a when_all() continuation the associated operation must be called with a future<tuple<future<Args>...>>. (In the following example a possible parameter declaration of "auto x" is for illustrational purpose written explicitly.)
 
 ~~~C++
-  auto ans = std::async([]{ return 40; });
-  auto wer = std::async([]{ return 2; });
+  auto an = std::async([]{ return 40; });
+  auto swer = std::async([]{ return 2; });
   
-  auto answer = std::when_all(std::move(ans), std::move(wer)).then( 
+  auto answer = std::when_all(std::move(an), std::move(swer)).then( 
     [](std::future<std::tuple<std::future<int>, std::future<int>>> x) {
       auto t = x.get();
       std::cout << get<0>(t).get() + get<1>(t).get();
@@ -73,22 +75,36 @@ This makes the code much more difficult to reason about, because as a first step
 So either the interface of the callable operation gets "infected" by the interface of std::future or an additional layer of extraction is necessary to invoke the operation. 
 Both choices are sub-optimal from our point of view and they can be avoided by instead allowing to call the continuations by value.
 
-One argument for passing a future to the continuation is, that the future encapsulates either the real value or an occured exception. That means that everyone has to use the more complicated interface by passing features, even there might be use cases where never an exception might occur. From our point of view this is against the general principle within C++, that one only should have to pay for what one really needs.
-For cases that an error handling is necessary, a new recover method serves this purpose.
+So the code then look like:
+
+~~~C++
+  auto an = async([]{ return 40; });
+  auto swer = async([]{ return 2; });
+  
+  auto answer = when_all(an, swer).then( 
+    [](int x, int y) {
+      std::cout << x + y;
+    });
+~~~
+
+One argument for passing a future into the continuation is, that the future encapsulates either the real value or an occured exception. That means that everyone has to use the more complicated interface by passing futures, even there might be use cases where never an exception might occur. From our point of view this is against the general principle within C++, that one only should have to pay for what one really needs.
+For cases that an error handling is necessary, a new recover method would serve this purpose.
 
 ~~~C++
   auto getTheAnswer = [] {
     throw std::exception("Bad thing happened: Vogons appeared");
-    std::cout << "I have got the answer\n";
     return 42;
   };
 
   auto handleTheAnswer = [](int v) { 
-    if (!v) std::cout << "No answer\n"; return v; 
+    if (v == 0) 
+      std::cout << "No answer\n"; 
+    else
+      std::cout << "The answer is " << v '\n'; 
   };
 
-  auto f = stlab::async(stlab::default_scheduler(), getTheAnswer)
-    .recover([](std::future<int> result) {
+  auto f = async(default_scheduler, getTheAnswer)
+    .recover([](future<int> result) {
       if (result.error()) {
         std::cout << "Listen to Vogon poetry!\n";
         return 0;
@@ -98,13 +114,9 @@ For cases that an error handling is necessary, a new recover method serves this 
 ~~~
 
 
-
-// TODO Erroro handling
-simplified interface and error handling (call the continuation with T not with future<T>!).
-
-
 ## Scalarbility 
 
+TODO
 scales to single threaded environments - either get rid of get() and wait() or define when and how tasks can be promoted to immediate execution and support get() and wait() in such circumstances without blocking. Note that get() and wait() as they are currently defined are potential deadlocks in any system without unlimited concurrency (i.e., in any real system).
 
 
