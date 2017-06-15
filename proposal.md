@@ -167,7 +167,7 @@ I like the idea of getting down to a single type like JS promise, however, I don
 
 ## Implementation
 
-With the ![concurrency library](http://www.stlab.cc/libraries/concurrency/index.html) an implementation is available that fulfills all the above stated requirements.
+With the [concurrency library](http://www.stlab.cc/libraries/concurrency/index.html) an implementation is available that fulfills all the above stated requirements.
 
 # IV. Impact On the Standard
 
