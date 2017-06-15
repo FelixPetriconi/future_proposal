@@ -20,20 +20,16 @@ TODO: Insert Tony-table here. Tony-tables are before/after comparisons
 
 The standard library needs a high-quality vocabulary type to represent asynchronous values. Having many variants of this concept in the wild is a pain point, but, even worse, the judicious use of "callback soup" makes asynchronous code difficult to develop and maintain. Unfortunately, based on the experience of the authors in real-world, production applications, neither the crippled `std::future`, nor the extensions proposed in the Concurrency TS are going to remedy the situation.
 
-In the negative, we recommend against adoption of the `std::future` related extensions in the Concurency TS. In the positive, we provide recommendations for an alternative that we feel will meet the demands of real world applications and, more importantly, gain widespread adoption.
+In the negative, we recommend against adoption of the `std::future` related extensions in the Concurrency TS. In the positive, we provide recommendations for an alternative that we feel will meet the demands of real world applications and, more importantly, gain widespread adoption.
 
 # III. Motivation and Scope
 
-## Motivation for the use of futures
-
-Futures provide one way to abstract away functions from execution in low level thread and synchronization primitives. 
-
-
 ## Copyable future
 
-A common use case in graphs of execution is that the result of an asynchronous calculation is needed as an argument for more than one further asynchronous operation. The current design of std::future is limited to one continuous operation, to one .then() continuation, because it accepts only an r-value std::future as argument. So the `std::future` must be moved into the continuation and after that it cannot be used as an argument for an other continuation.
+A common use case in graphs of execution is that the result of an asynchronous calculation is needed as an argument for more than one further asynchronous operation. The current design of std::future is limited to one continuous operation, to one `.then()` continuation, because it accepts only an r-value `std::future` as argument. So the `std::future` must be moved into the continuation and after that it cannot be used as an argument for an other continuation.
+An other reason for the necessity 
 
-So it is necessary that futures become copyable and the following example of multiple continuatons into different directions woudl be possible. 
+So it is necessary that futures become copyable and the following example of multiple continuations into different directions would be possible. 
 
 ~~~C++
    std::future<int> a;
@@ -44,10 +40,10 @@ So it is necessary that futures become copyable and the following example of mul
 
 ## Cancellation of futures
 
-Because of different reasons it might be that the result of an asynchronous operation and its continuation(s) is not needed any more; e.g. the user has cancelled an operation. The current design of std::future and the TS does not support any kind of cancellation. So it is required to wait for its fulfillment even when the result is not be needed any more. On systems with limited resources, e.g. mobile devices, this is a waste of resources.
-Even it is possible to implement cancellation on top of the existing design, it would be preferable, if the futures would have this capability by themselfs. 
+Because of different reasons it might be that the result of an asynchronous operation and its continuation(s) is not needed any more; e.g. the user has canceled an operation. The current design of std::future and the TS does not support any kind of cancellation. So it is required to wait for its fulfillment even when the result is not be needed any more. On systems with limited resources, e.g. mobile devices, this is a waste of resources.
+Even it is possible to implement cancellation on top of the existing design, it would be preferable, if the futures would have this capability by themselves. 
 
-So we think that it is neecessary that a future can be destructed without the need to execute its associated task, when this has not started. In case that it has started, it should finish, the result dropped and the attached continuations should not be executed.
+So we think that it is necessary that a future can be destructed without the need to execute its associated task, when this has not started. In case that it has started, it should finish, the result dropped and the attached continuations should not be executed.
 
 So in the following is shown a graph of futures (indicated as squares) and tasks (indicated as circles).
 
@@ -104,7 +100,7 @@ So the code then looks like:
     });
 ~~~
 
-One argument for passing a future into the continuation is, that the future encapsulates either the real value or an occured exception. But this implies that everyone has to use the more complicated interface by passing futures, even there might be use cases where never an exception might occur. From our point of view this is against the general principle within C++, that one only should have to pay for what one really needs.
+One argument for passing a future into the continuation is, that the future encapsulates either the real value or an occurred exception. But this implies that everyone has to use the more complicated interface by passing futures, even there might be use cases where never an exception might occur. From our point of view this is against the general principle within C++, that one only should have to pay for what one really needs.
 For cases that an error handling is necessary, a new recover method would serve the same purpose.
 
 ~~~C++
@@ -131,7 +127,7 @@ For cases that an error handling is necessary, a new recover method would serve 
 ~~~
 
 
-## Scalarbility 
+## Scalability 
 
 TODO
 scales to single threaded environments - either get rid of get() and wait() or define when and how tasks can be promoted to immediate execution and support get() and wait() in such circumstances without blocking. Note that get() and wait() as they are currently defined are potential deadlocks in any system without unlimited concurrency (i.e., in any real system).
@@ -159,7 +155,7 @@ Here the first future shall be executed on the default executor, which we think 
 
 As it is specified in the C++17 TS, there should be joins as when_all and when_any. But as already pointed out above the attached function object should take its arguments per value and not by future<T>.
 
-Now it would be possible with the support of cancellation of futures that in case of a single failing future for a when_all, all not started futures are cancelled, because the overall when_all cannot be fullfilled any more. The same is valid for a when_any. So as soon as one future is fullfilled, all other non started futures could be cancelled. 
+Now it would be possible with the support of cancellation of futures that in case of a single failing future for a when_all, all not started futures are canceled, because the overall when_all cannot be fulfilled any more. The same is valid for a when_any. So as soon as one future is fulfilled, all other non started futures could be canceled. 
 
 
 
@@ -167,7 +163,7 @@ Now it would be possible with the support of cancellation of futures that in cas
 
 7) Ideally this is all paired with a rich standard tasking system, and forms the basis for a rich channel system for use with co-routines.
 
-I like the idea of getting down to a single type like JS promise, however, I don't know quite how to make that work with cancellation. I think not treating the processor as RAII - when it is arguably the most important resource in the machine, is nuts and yet cancellation is left out of nearly every model. Usually with a handwave about it "being something you can add in", when in any non-trivial system there is no good way to do so.
+I like the idea of getting down to a single type like JS promise, however, I don't know quite how to make that work with cancellation. I think not treating the processor as RAII - when it is arguably the most important resource in the machine, is nuts and yet cancellation is left out of nearly every model. Usually with a hand wave about it "being something you can add in", when in any non-trivial system there is no good way to do so.
 
 
 Why is this important? What kinds of problems does it address? What is the intended user community? What level of programmers (novice, experienced, expert) is it intended to support? What existing practice is it based on? How widespread is its use? How long has it been in use? Is there a reference implementation and test suite available for inspection?
@@ -178,7 +174,7 @@ What other library components does does it depend on, and what depends on it? Is
 
 # V. Design Decisions
 
-Why did you choose the specific design that you did? What alternatives did you consider, and what are the tradeoffs? What are the consequences of your choice, for users and implementers? What decisions are left up to implementers? If there are any similar libraries in use, how do their design decisions compare to yours?
+Why did you choose the specific design that you did? What alternatives did you consider, and what are the trade-offs? What are the consequences of your choice, for users and implementers? What decisions are left up to implementers? If there are any similar libraries in use, how do their design decisions compare to yours?
 
 # VI. Technical Specifications
 
@@ -190,7 +186,7 @@ Provide technical documentation that is complete enough to fully evaluate your p
  
 Provide full "Standardese." A standard is a contract between implementers and users, to make it possible for users to write portable code with specified semantics. It says what implementers are permitted to do, what they are required to do, and what users can and can't count on. The "standardese" should match the general style of exposition of the standard, and the specific rules set out in 17.5, Method of description (Informative) [description], but it does not have to match the exact margins or fonts or section numbering; those things will all be changed anyway.
 
-# VII. Acknowledgements
+# VII. Acknowledgments
 
 # VIII. References
 
