@@ -2,13 +2,13 @@
 Towards a Good Future
 ---
 
-Document number:  Nnnnn=yy-nnnn
+Document number: P0676R0
 
-Date:  yyyy-mm-dd
+Date: 2017-06-18
 
-Project:  Programming Language C++, Library Working Group
+Project: Programming Language C++, Library Working Group
 
-Reply-to:  Sean Parent sean.parent{at}gmail[dotcom], David Sankel camior{at}gmail[dotcom], Felix Petriconi felix{at}petriconi[dotnet]
+Reply-to:  Felix Petriconi felix{at}petriconi[dotnet], David Sankel camior{at}gmail[dotcom], Sean Parent sean.parent{at}gmail[dotcom]
 
 <!--
 TODO: Insert Tony-table here. Tony-tables are before/after comparisons
@@ -26,12 +26,14 @@ In the negative, we recommend against adoption of the `std::future` related exte
 
 ## Motivation for the use of futures
 
+Futures provide one way to abstract away functions from execution in low level thread and synchronization primitives. 
+
 
 ## Copyable future
 
-A common use case in graphs of execution is that the result of an asynchronous calculation is needed as an argument for more than one further asynchronous operation. The current design of std::future is limited to one continuous operation, to one .then() continuation, because it accepts only an r-value std::future as argument. So the std::future must be moved into the continuation and then cannot be used as an argument for an other continuation.
+A common use case in graphs of execution is that the result of an asynchronous calculation is needed as an argument for more than one further asynchronous operation. The current design of std::future is limited to one continuous operation, to one .then() continuation, because it accepts only an r-value std::future as argument. So the `std::future` must be moved into the continuation and after that it cannot be used as an argument for an other continuation.
 
-So it is necessary that futures become copyable and the following example of multiple continuatons into different directions would be possible. 
+So it is necessary that futures become copyable and the following example of multiple continuatons into different directions woudl be possible. 
 
 ~~~C++
    std::future<int> a;
@@ -42,11 +44,26 @@ So it is necessary that futures become copyable and the following example of mul
 
 ## Cancellation of futures
 
-Because of different reasons it might be that the result of an asynchronous operation and its continuation is not needed any more; e.g. the user has cancelled an operation in the user interface. The current design of std::future and the TS does not support any kind of cancellation. So it is required to wait for its fulfillment even the result might not be needed any more. On systems with limited resources, e.g. mobile devices, this is a waste of resources.
+Because of different reasons it might be that the result of an asynchronous operation and its continuation(s) is not needed any more; e.g. the user has cancelled an operation. The current design of std::future and the TS does not support any kind of cancellation. So it is required to wait for its fulfillment even when the result is not be needed any more. On systems with limited resources, e.g. mobile devices, this is a waste of resources.
 Even it is possible to implement cancellation on top of the existing design, it would be preferable, if the futures would have this capability by themselfs. 
 
-So we think that it is neecessary that a future can be destructed without the execution of its associated task. In such a situation all attached continuations should not be executed as well. 
+So we think that it is neecessary that a future can be destructed without the need to execute its associated task, when this has not started. In case that it has started, it should finish, the result dropped and the attached continuations should not be executed.
 
+So in the following is shown a graph of futures (indicated as squares) and tasks (indicated as circles).
+
+![](images/FutureChain01.png)   
+
+In case that one is not interested in future F3 any more, it is destructed. Then the graph would become:
+
+![](images/FutureChain02.png) 
+
+So there is no need any more to execute task T3 and it will automatically be dropped as well and the graph would change to:
+
+![](images/FutureChain03.png)
+
+Now there is no need any more to keep the futures F2a and F4a and they go away as well.
+
+![](images/FutureChain04.png)
 
 
 ## Simplified interface
@@ -73,9 +90,9 @@ In case of a when_all() continuation the associated operation must be called wit
 
 This makes the code much more difficult to reason about, because as a first step the tuple must be extracted from the future and then all values for the actual calculation of the continuation must be accessed through the tuple and then through the futures.
 So either the interface of the callable operation gets "infected" by the interface of std::future or an additional layer of extraction is necessary to invoke the operation. 
-Both choices are sub-optimal from our point of view and they can be avoided by instead allowing to call the continuations by value.
+Both choices are not optimal from our point of view and they can be avoided by instead allowing to call the continuations by value.
 
-So the code then look like:
+So the code then looks like:
 
 ~~~C++
   auto an = async([]{ return 40; });
@@ -87,8 +104,8 @@ So the code then look like:
     });
 ~~~
 
-One argument for passing a future into the continuation is, that the future encapsulates either the real value or an occured exception. That means that everyone has to use the more complicated interface by passing futures, even there might be use cases where never an exception might occur. From our point of view this is against the general principle within C++, that one only should have to pay for what one really needs.
-For cases that an error handling is necessary, a new recover method would serve this purpose.
+One argument for passing a future into the continuation is, that the future encapsulates either the real value or an occured exception. But this implies that everyone has to use the more complicated interface by passing futures, even there might be use cases where never an exception might occur. From our point of view this is against the general principle within C++, that one only should have to pay for what one really needs.
+For cases that an error handling is necessary, a new recover method would serve the same purpose.
 
 ~~~C++
   auto getTheAnswer = [] {
@@ -103,7 +120,7 @@ For cases that an error handling is necessary, a new recover method would serve 
       std::cout << "The answer is " << v '\n'; 
   };
 
-  auto f = async(default_scheduler, getTheAnswer)
+  auto f = async(default_executor, getTheAnswer)
     .recover([](future<int> result) {
       if (result.error()) {
         std::cout << "Listen to Vogon poetry!\n";
@@ -124,7 +141,7 @@ scales to single threaded environments - either get rid of get() and wait() or d
 
 Many of the todays used UI libraries allow changes of the UI elements only from within the main-event-loop or main-thread. But with the design of std::async and the continuations of C++11 and the C++17 TS it is not easily possible to perform changes in the UI, because it is not possible to define in which thread a future or a continuation shall be executed.
 
-So we propose that it should be possible to specify an executor while using std::async to create a new future or pass it as additional argument when calling a continuation.
+So we propose that it should be possible to specify an executor while using std::async or std::package to create a new future or pass it as additional argument when calling a continuation.
 
 Example:
 
@@ -135,7 +152,7 @@ Example:
     calculateTheAnswer.then( QtMainLoopExecutor{}, [this](int a) { _theAnswerDisplayField.setValue(a); } ); 
 ~~~
 
-Here the first future shall be executed on the default executor, which we think should be the system's thread pool. And then the continuation shall run on an executor that schedules all tasks to be executed within the Qt main loop.
+Here the first future shall be executed on the default executor, which we think should be based on the system's thread pool. And then the continuation shall run on an executor that schedules all tasks to be executed within the Qt main loop.
 
 
 ## Joins 
