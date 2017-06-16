@@ -167,11 +167,11 @@ I like the idea of getting down to a single type like JS promise, however, I don
 
 ## Implementation
 
-With the concurrency library [https://github.com/stlab/libraries](https://github.com/stlab/libraries) an implementation is available that fulfills all the above stated requirements.
+With the concurrency library [https://github.com/stlab/libraries](https://github.com/stlab/libraries) an implementation is available that fulfills all the above stated requirements. This library should not be seen as a 1:1 blue print for a new standard, but serve as an illustration what could be possible.
 
 # IV. Impact On the Standard
 
-What other library components does does it depend on, and what depends on it? Is it a pure extension, or does it require changes to standard components? Can it be implemented using C++11 compilers and libraries, or does it require language or library features that are not part of C++11?
+Only the existing future library is influence by this proposal.
 
 # V. Design Decisions
 
@@ -182,6 +182,8 @@ Why did you choose the specific design that you did? What alternatives did you c
 The technical documentation of the existing library with several code examples is available on [http://www.stlab.cc/libraries/concurrency/index.html](http://www.stlab.cc/libraries/concurrency/index.html) to clarify the details.
 
 # VII. Acknowledgments
+
+We thank Gor Nishanov for encouraging us in pursuing with this proposal and for sharing his thought.
 
 # VIII. References
 
