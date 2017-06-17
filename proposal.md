@@ -16,7 +16,7 @@ Reply-to:  Felix Petriconi felix{at}petriconi[dotnet], David Sankel camior{at}gm
 
 The standard library needs a high-quality vocabulary type to represent asynchronous values. Having many variations of this concept in the wild is a pain point, but, even worse, the judicious use of "callback soup" makes asynchronous code difficult to develop and maintain. Unfortunately, based on the experience of the authors in real-world, production applications, neither the crippled `std::future`, nor the extensions proposed in the Concurrency TS are going to remedy the situation.
 
-In the negative, we recommend against adoption of the `std::future` related extensions in the Concurrency TS. In the positive, we provide recommendations for an alternative that we feel will meet the demands of real world applications and, more importantly, gain widespread adoption. The features we propose are based on a combination of characteristics of [Adobe stlab's future](http://www.stlab.cc/libraries/concurrency/future/future/) and [Bloomberg dplp's promise](https://github.com/camio/dpl/blob/master/dplp/dplp_promise.h). The latter was presented on at C++Now 2017 in [The Mathematical Underpinnings of Promises in C++](https://www.youtube.com/watch?v=2OY0Zn3oBCE) and [Promises in C++: The Universal Glue for Asynchronous Programs](https://www.youtube.com/watch?v=pKMZjd9CFnw).
+In the negative, we recommend against adoption of the `std::future` related extensions in the Concurrency TS. In the positive, we provide recommendations for an alternative that we feel will meet the demands of real world applications and, more importantly, gain widespread adoption. The features we propose are based on a combination of characteristics of [Adobe stlab's future](http://www.stlab.cc/libraries/concurrency/future/future/) and [Bloomberg dplp's promise](https://github.com/camio/dpl/blob/master/dplp/dplp_promise.h). The latter was presented at C++Now 2017 in [The Mathematical Underpinnings of Promises in C++](https://www.youtube.com/watch?v=2OY0Zn3oBCE) and [Promises in C++: The Universal Glue for Asynchronous Programs](https://www.youtube.com/watch?v=pKMZjd9CFnw).
 
 # III. Motivation and Scope
 
@@ -34,15 +34,16 @@ So it is necessary that futures become copyable and the following example of mul
    a.then([](int x){ /* also do something else. */ }
 ~~~
 
+If any of the future type arguments are move only, then the future itself is move only, and may only have a single continuation. A future which is an rvalue also may only have a sinlge continuation attached and this allows optimization to avoid unessary copies of values passed to continuations.
 
 ## Cancellation of futures
 
-For various reasons reasons, the result of an asynchronous operation and its continuations may no longer be needed during the course of execution; e.g. the application's user has canceled an operation. The current design of `std::future` and the TS does not support any kind of cancellation. Instead, it is required to wait for a future's fulfillment even when the result is not needed anymore. This is a waste of resources, especially on e.g. mobile devices.
+For various reasons, the result of an asynchronous operation and its continuations may no longer be needed during the course of execution; e.g. the application's user has canceled an operation, or a subsequent operation replaces the result or yields it unessary. The current design of `std::future` and the TS does not support any kind of cancellation. Instead, it is required to wait for a future's fulfillment even when the result is not needed anymore. This is a waste of resources, especially on e.g. mobile devices.
 Even if it were possible to implement cancellation on top of the existing design, it would be preferable for futures to have this capability built-in. 
 
 We think it necessary that a future can be "destructed" before it starts execution of its associated task. In case that it has started, it should finish, but the result would be dropped and the attached continuations should not be executed.
 
-Tasks, indicated as circles, and futures, indicated as squares, are building a graph of execution in the following image.
+Tasks, indicated as circles, and futures, indicated as squares, build a dependency graph of execution in the following image.
 
 ![](images/FutureChain01.png)   
 
@@ -99,7 +100,7 @@ So the code could then be written like this:
     });
 ~~~
 
-One argument for passing a future to the continuation is that the future encapsulates either the real value or an occurred exception. However, this implies that everyone has to use the more complicated interface by passing futures even when an exception cannot occur. From our point of view this is against the general principle within C++, that one only should have to pay for what one really needs.
+One argument for passing a future to the continuation is that the future encapsulates either the real value or an exception. However, this implies that everyone has to use the more complicated interface by passing futures even when an exception cannot occur. From our point of view this is against the general principle within C++, that one should only have to pay for what one really needs.
 
 In cases where error handling is necessary, an optional second argument to `then` can be used.
 
@@ -146,7 +147,7 @@ What should the type be of `answer` above? We propose that instead of using the 
 
 ## Simplifying Future Creation
 
-Creating a future that isn't based on another future is done via. first creating a `std::promise` object. Conversion of an asynchronous function to a `future`-returning function is accomplished as follows: 
+Creating a future that isn't based on another future is done via first creating a `std::promise` object. Conversion of an asynchronous function to a `future`-returning function is accomplished as follows: 
 
 ~~~C++
   std::future<int> wrappedF() {
@@ -167,14 +168,55 @@ The dance required to accomplish this is difficult to follow and explain, especi
   }
 ~~~
 
+---
+
+The STLab currency library takes a different approach. Conceptually, a future is a token used to seperate the result of a function from the invocation of the function. The invocation portion of the function is refered to as the task. The code that seperates these two components is refered to a package:
+
+```cpp
+auto [task, result] = package([](int x){ return x * 2; });
+result.then([](int x){ cout << x << endl; }
+task(4);
+```
+Will print:
+```
+8
+```
+
+This pattern can be used with a trivial function to convert a packaged task into a simple promise:
+
+```cpp
+auto [promise, result] = package([](int x){ return x; }); // identity function
+```
+
+`package()` establishes a root for a dependency tree. There are 3 pieces of information that can be communicated through this root. The value or exception flow from the task to the future, and cancelation flows from future to task. All of this information is available through this interface, though the interface is biased towards simple values:
+
+```cpp
+template <class F>
+class cancel_notifer {
+   optional<F> _f;
+public:
+   cancel_notifer(F f) : _f(move(f)) { }
+   ~cancel_notifer() { if (_f) _f.get()(); }
+   void reset() { _f.reset(); }
+};
+
+
+auto [task, result] = package([_notifier = cancel_notifier([] {
+   cout << "was canceled" << endl;
+})](variant<value_type, exception_ptr> x) {
+   _notifier.reset();
+   if (auto p = x.get_if<exception_ptr>()) return rethrow_exception(*p);
+   return move(x).get<value_type>();
+});
+```
+
 ## Scalability 
 
-It is necessary that futures scale in the same way from single threaded to multi threaded environments. So either it it necessary to get rid of `.get()` and `.wait()` or define when and how tasks can be promoted to immediate execution and support `.get()` and `.wait()` in such circumstances without blocking. 
+It is necessary that futures scale in the same way from single threaded to multi threaded environments. So either it it necessary to get rid of `.get()` and `.wait()` or define when and how tasks can be promoted to immediate (inline) execution and support `.get()` and `.wait()` in such circumstances without blocking. 
 
 Note that `.get()` and `.wait()` as they are currently defined are potential deadlocks in any system without unlimited concurrency (i.e., in any real system).
 
 We propose that these be made into free functions with names that better indicate the potential danger.
-
 
 ##  Executors
 
@@ -198,14 +240,7 @@ Here the task associated with the first future shall be executed on the default 
 
 As specified in the C++17 TS, there should be joins as `when_all` and `when_any`. But as already pointed out above, the attached function object should take its arguments per value and not by `future<T>`.
 
-Now it would be possible with the support of cancellation of futures that in case of a single failing future for a `when_all`, all not started futures are canceled, because the overall `when_all` cannot be fulfilled any more. The same is valid for a `when_any`. So as soon as one future is fulfilled, all other non started futures could be canceled. 
-
-
-7) Ideally this is all paired with a rich standard tasking system, and forms the basis for a rich channel system for use with co-routines.
-
-I like the idea of getting down to a single type like JS promise, however, I don't know quite how to make that work with cancellation. I think not treating the processor as RAII - when it is arguably the most important resource in the machine, is nuts and yet cancellation is left out of nearly every model. Usually with a hand wave about it "being something you can add in", when in any non-trivial system there is no good way to do so.
-
-<!-- I think this whole section should be removed. It isn't coherent. -->
+Now it would be possible with the support of cancellation of futures that in case of a single failing future for a `when_all`, all not started futures are canceled, because the overall `when_all` cannot be fulfilled any more. The same is valid for a `when_any`. So as soon as one future is fulfilled, all other non started futures could be canceled. `when_any` and `when_all` are special cases of a more general `when_n`.
 
 # IV. Impact On the Standard
 
