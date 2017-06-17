@@ -14,9 +14,9 @@ Reply-to:  Felix Petriconi felix{at}petriconi[dotnet], David Sankel camior{at}gm
 
 # II. Introduction
 
-The standard library needs a high-quality vocabulary type to represent asynchronous values. Having many variants of this concept in the wild is a pain point, but, even worse, the judicious use of "callback soup" makes asynchronous code difficult to develop and maintain. Unfortunately, based on the experience of the authors in real-world, production applications, neither the crippled `std::future`, nor the extensions proposed in the Concurrency TS are going to remedy the situation.
+The standard library needs a high-quality vocabulary type to represent asynchronous values. Having many variations of this concept in the wild is a pain point, but, even worse, the judicious use of "callback soup" makes asynchronous code difficult to develop and maintain. Unfortunately, based on the experience of the authors in real-world, production applications, neither the crippled `std::future`, nor the extensions proposed in the Concurrency TS are going to remedy the situation.
 
-In the negative, we recommend against adoption of the `std::future` related extensions in the Concurrency TS. In the positive, we provide recommendations for an alternative that we feel will meet the demands of real world applications and, more importantly, gain widespread adoption. The features we propose here are based on a combination of features from [Adobe stllab's future](http://www.stlab.cc/libraries/concurrency/future/future/) and [Bloomberg dplp's promise](https://github.com/camio/dpl/blob/master/dplp/dplp_promise.h). The latter was presented on at C++Now 2017 in [The Mathematical Underpinnings of Promises in C++](https://www.youtube.com/watch?v=2OY0Zn3oBCE) and [Promises in C++: The Universal Glue for Asynchronous Programs](https://www.youtube.com/watch?v=pKMZjd9CFnw).
+In the negative, we recommend against adoption of the `std::future` related extensions in the Concurrency TS. In the positive, we provide recommendations for an alternative that we feel will meet the demands of real world applications and, more importantly, gain widespread adoption. The features we propose are based on a combination of characteristics of [Adobe stlab's future](http://www.stlab.cc/libraries/concurrency/future/future/) and [Bloomberg dplp's promise](https://github.com/camio/dpl/blob/master/dplp/dplp_promise.h). The latter was presented on at C++Now 2017 in [The Mathematical Underpinnings of Promises in C++](https://www.youtube.com/watch?v=2OY0Zn3oBCE) and [Promises in C++: The Universal Glue for Asynchronous Programs](https://www.youtube.com/watch?v=pKMZjd9CFnw).
 
 # III. Motivation and Scope
 
@@ -29,7 +29,7 @@ The support of a split would close the current gab in symmetry of the interface 
 So it is necessary that futures become copyable and the following example of multiple continuations into different directions would be possible. 
 
 ~~~C++
-   std::future<int> a;
+   future<int> a;
    a.then([](int x){ /* do something */ });
    a.then([](int x){ /* also do something else. */ }
 ~~~
@@ -37,12 +37,12 @@ So it is necessary that futures become copyable and the following example of mul
 
 ## Cancellation of futures
 
-Because of different reasons it might be that the result of an asynchronous operation and its continuation(s) is not needed any more; e.g. the application's user has canceled an operation. The current design of `std::future` and the TS does not support any kind of cancellation. So it is required to wait for its fulfillment even when the result is not be needed any more. On systems with limited resources, e.g. mobile devices, this is a waste of resources.
-Even it is possible to implement cancellation on top of the existing design, it would be preferable, if the futures would have this capability by themselves. 
+For various reasons reasons, the result of an asynchronous operation and its continuations may no longer be needed during the course of execution; e.g. the application's user has canceled an operation. The current design of `std::future` and the TS does not support any kind of cancellation. Instead, it is required to wait for a future's fulfillment even when the result is not needed anymore. This is a waste of resources, especially on e.g. mobile devices.
+Even if it were possible to implement cancellation on top of the existing design, it would be preferable for futures to have this capability built-in. 
 
-So we think that it is necessary that a future can be destructed without the need to execute its associated task, when this has not started. In case that it has started, it should finish, but the result would be dropped and the attached continuations should not be executed.
+We think it necessary that a future can be "destructed" before it starts execution of its associated task. In case that it has started, it should finish, but the result would be dropped and the attached continuations should not be executed.
 
-Tasks, indicated as circles and futures, indicated as squares, are building a graph of execution in the following image.
+Tasks, indicated as circles, and futures, indicated as squares, are building a graph of execution in the following image.
 
 ![](images/FutureChain01.png)   
 
@@ -99,9 +99,9 @@ So the code could then be written like this:
     });
 ~~~
 
-One argument for passing a future into the continuation is, that the future encapsulates either the real value or an occurred exception. But this implies that everyone has to use the more complicated interface by passing futures, even there might be use cases where never an exception might occur. From our point of view this is against the general principle within C++, that one only should have to pay for what one really needs.
+One argument for passing a future to the continuation is that the future encapsulates either the real value or an occurred exception. However, this implies that everyone has to use the more complicated interface by passing futures even when an exception cannot occur. From our point of view this is against the general principle within C++, that one only should have to pay for what one really needs.
 
-For cases that error handling is necessary, an optional second argument to `then` can be used.
+In cases where error handling is necessary, an optional second argument to `then` can be used.
 
 ~~~C++
   auto getTheAnswer = [] {
@@ -140,9 +140,9 @@ In the snippet above, reproduced below, what is the type of `when_all(an, swer)`
     });
 ~~~
 
-We propose that its type should be `future<int, int>`. Extending `futures` to have the ability to carry multiple types has a great convenience due to how `then` is used. To create a multi-valued future, one can use `when_all` or return a `std::tuple` object in a continuation.
+We propose that its type should be `future<int, int>`. Extending `future`s with the ability to carry multiple types has a great convenience due to how `then` is used. To create a multi-valued future, one can use `when_all` or return a `std::tuple` object in a continuation.
 
-What should the type be of `answer` above? We propose that instead of using the `void` keyword as a special case, we instead use `future<>` to represent a future that carries no values. This again has a great harmony with how continuation functions are defined.
+What should the type be of `answer` above? We propose that instead of using the `void` keyword as a special case, we instead use `future<>` to represent a future that carries no values. This has a great harmony with how continuation functions are specified.
 
 ## Simplifying Future Creation
 
@@ -173,12 +173,14 @@ It is necessary that futures scale in the same way from single threaded to multi
 
 Note that `.get()` and `.wait()` as they are currently defined are potential deadlocks in any system without unlimited concurrency (i.e., in any real system).
 
+We propose that these be made into free functions with names that better indicate the potential danger.
+
 
 ##  Executors
 
-Many of the todays used UI libraries allow changes of the UI elements only from within the main-event-loop or main-thread. But with the design of std::async and the continuations of C++11 and the C++17 TS it is not easily possible to perform changes in the UI, because it is not possible to define in which thread a future or a continuation shall be executed.
+Many of today's UI libraries allow changes of the UI elements only from within the main-event-loop or main-thread. However, the design of std::async and the continuations of C++11 and the C++17 TS it is not easily possible to perform changes in the UI, because it is not possible to define in which thread a future or a continuation shall be executed.
 
-So we propose that it should be possible to specify an executor while using `async` or `package` to create a new future or pass it as additional argument when calling a continuation.
+To remedy this, we propose that it should be possible to specify an executor while using `async` or `package` to create a new future or pass it as additional argument when calling a continuation.
 
 Example:
 
@@ -194,7 +196,7 @@ Here the task associated with the first future shall be executed on the default 
 
 ## Joins 
 
-As it is specified in the C++17 TS, there should be joins as `when_all` and `when_any`. But as already pointed out above, the attached function object should take its arguments per value and not by `future<T>`.
+As specified in the C++17 TS, there should be joins as `when_all` and `when_any`. But as already pointed out above, the attached function object should take its arguments per value and not by `future<T>`.
 
 Now it would be possible with the support of cancellation of futures that in case of a single failing future for a `when_all`, all not started futures are canceled, because the overall `when_all` cannot be fulfilled any more. The same is valid for a `when_any`. So as soon as one future is fulfilled, all other non started futures could be canceled. 
 
@@ -203,31 +205,12 @@ Now it would be possible with the support of cancellation of futures that in cas
 
 I like the idea of getting down to a single type like JS promise, however, I don't know quite how to make that work with cancellation. I think not treating the processor as RAII - when it is arguably the most important resource in the machine, is nuts and yet cancellation is left out of nearly every model. Usually with a hand wave about it "being something you can add in", when in any non-trivial system there is no good way to do so.
 
-
-## Implementation
-
-With the concurrency library [https://github.com/stlab/libraries](https://github.com/stlab/libraries) an implementation is available that fulfills all the above stated requirements. This library should not be seen as a 1:1 blue print for a new standard, but serve as an illustration what could be possible.
-
+<!-- I think this whole section should be removed. It isn't coherent. -->
 
 # IV. Impact On the Standard
 
-Only the existing future library is influence by this proposal.
+Rather than attempting to "fix" the current `std::future`, we suggest that a better designed future be put into `std` or `std2`.
 
+# V. Acknowledgments
 
-# V. Design Decisions
-
-Why did you choose the specific design that you did? What alternatives did you consider, and what are the trade-offs? What are the consequences of your choice, for users and implementers? What decisions are left up to implementers? If there are any similar libraries in use, how do their design decisions compare to yours?
-
-
-# VI. Technical Specifications
-
-The technical documentation of the existing library with several code examples is available on [http://www.stlab.cc/libraries/concurrency/index.html](http://www.stlab.cc/libraries/concurrency/index.html) to clarify the details.
-
-
-# VII. Acknowledgments
-
-We thank Gor Nishanov for encouraging us in pursuing with this proposal and for sharing his thought.
-
-
-# VIII. References
-
+We thank Gor Nishanov for encouraging us in pursuing with this proposal and for sharing his thought. Related conversations with Bryce Lebach have also been tremendously helpful.
