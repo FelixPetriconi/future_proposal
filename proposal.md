@@ -10,17 +10,13 @@ Project: Programming Language C++, Library Working Group
 
 Reply-to:  Felix Petriconi felix{at}petriconi[dotnet], David Sankel camior{at}gmail[dotcom], Sean Parent sean.parent{at}gmail[dotcom]
 
-<!--
-TODO: Insert Tony-table here. Tony-tables are before/after comparisons
--->
-
 # I. Table of Contents
 
 # II. Introduction
 
 The standard library needs a high-quality vocabulary type to represent asynchronous values. Having many variants of this concept in the wild is a pain point, but, even worse, the judicious use of "callback soup" makes asynchronous code difficult to develop and maintain. Unfortunately, based on the experience of the authors in real-world, production applications, neither the crippled `std::future`, nor the extensions proposed in the Concurrency TS are going to remedy the situation.
 
-In the negative, we recommend against adoption of the `std::future` related extensions in the Concurrency TS. In the positive, we provide recommendations for an alternative that we feel will meet the demands of real world applications and, more importantly, gain widespread adoption.
+In the negative, we recommend against adoption of the `std::future` related extensions in the Concurrency TS. In the positive, we provide recommendations for an alternative that we feel will meet the demands of real world applications and, more importantly, gain widespread adoption. The features we propose here are based on a combination of features from [Adobe stllab's future](http://www.stlab.cc/libraries/concurrency/future/future/) and [Bloomberg dplp's promise](https://github.com/camio/dpl/blob/master/dplp/dplp_promise.h). The latter was presented on at C++Now 2017 in [The Mathematical Underpinnings of Promises in C++](https://www.youtube.com/watch?v=2OY0Zn3oBCE) and [Promises in C++: The Universal Glue for Asynchronous Programs](https://www.youtube.com/watch?v=pKMZjd9CFnw).
 
 # III. Motivation and Scope
 
@@ -67,14 +63,16 @@ And so the reduced graph remains.
 
 ## Simplified interface
 
-The associated operation of a continuation shall be invoked with a `std::future<T>` according with the C++17 TS. 
+According to the C++17 TS, `std::future`'s `then` member function has a single argument (called a continuation) that is invoked with a `std::future<T>` object:
 
 ~~~C++
   std::future<int> getTheAnswer = std::async([]{ return 42; };
   auto next = getTheAnswer.then([](std::future<int> x) { std::cout << x.get(); };
 ~~~
 
-The associated operation must be called with a `future<tuple<future<Args>...>>` in case of a `when_all()` continuation. (In the following example a possible parameter declaration of "auto x" is written explicitly for clarification.)
+The passed `std::future` object is in a completed state (e.g. already fulfilled with a value or rejected with an exception) when the continuation is called.  While this is a clever way to communicate the fulfilled or rejected value to the continuation, use of the future object as a "value or error" object instead of its primary purpose (a potentially *future* value or error) is confusing.
+
+The problem is exacerbated when `then` is called on the result of a `when_all` operation. Its continuation must be called with a `future<tuple<future<Args>...>>` argument. (In the following example a possible parameter declaration of "auto x" is written explicitly for clarification.)
 
 ~~~C++
   std::future<int> an = std::async([]{ return 40; });
@@ -87,9 +85,7 @@ The associated operation must be called with a `future<tuple<future<Args>...>>` 
     });
 ~~~
 
-This makes the code much more difficult to reason about, because as a first step the tuple must be extracted from the future and then all values for the actual calculation of the continuation must be accessed through the tuple and then through the futures.
-So either the interface of the callable operation gets "infected" by the interface of `std::future` or an additional layer of extraction is necessary to invoke the operation. 
-Both choices are not optimal from our point of view and they can be avoided by instead  calling the continuations by value.
+This code is difficult to reason about. First, the tuple must be extracted from the future and then all values for the actual calculation of the continuation must be accessed through the tuple and then through the futures.  So either the interface of the callable operation gets "infected" by the interface of `std::future` or an additional layer of extraction is necessary to invoke the operation.  Both choices are not optimal from our point of view and they can be avoided by instead calling the continuations by value.
 
 So the code could then be written like this:
 
@@ -105,7 +101,7 @@ So the code could then be written like this:
 
 One argument for passing a future into the continuation is, that the future encapsulates either the real value or an occurred exception. But this implies that everyone has to use the more complicated interface by passing futures, even there might be use cases where never an exception might occur. From our point of view this is against the general principle within C++, that one only should have to pay for what one really needs.
 
-For cases that error handling is necessary, a new `.recover()` method would serve the same purpose.
+For cases that error handling is necessary, an optional second argument to `then` can be used.
 
 ~~~C++
   auto getTheAnswer = [] {
@@ -121,17 +117,55 @@ For cases that error handling is necessary, a new `.recover()` method would serv
   };
 
   auto f = async(default_executor, getTheAnswer)
-    .recover([](future<int> result) {
-      if (result.error()) {
+    .then(
+      [](int result) { return result; },
+      [](const std::exception_ptr & error) {
         std::cout << "Listen to Vogon poetry!\n";
         return 0;
-      }
-      return result.get_try().value();
-  }).then(handleTheAnswer);
+      })
+    .then(handleTheAnswer);
 ~~~
 
-An alternative to a `recover()` method could be an additional parameter to the `then()` method.
+## Zero and Multi-Valued Futures
 
+In the snippet above, reproduced below, what is the type of `when_all(an, swer)`?
+
+~~~C++
+  future<inr> an = async([]{ return 40; });
+  future<int> swer = async([]{ return 2; });
+  
+  auto answer = when_all(an, swer).then( 
+    [](int x, int y) {
+      std::cout << x + y;
+    });
+~~~
+
+We propose that its type should be `future<int, int>`. Extending `futures` to have the ability to carry multiple types has a great convenience due to how `then` is used. To create a multi-valued future, one can use `when_all` or return a `std::tuple` object in a continuation.
+
+What should the type be of `answer` above? We propose that instead of using the `void` keyword as a special case, we instead use `future<>` to represent a future that carries no values. This again has a great harmony with how continuation functions are defined.
+
+## Simplifying Future Creation
+
+Creating a future that isn't based on another future is done via. first creating a `std::promise` object. Conversion of an asynchronous function to a `future`-returning function is accomplished as follows: 
+
+~~~C++
+  std::future<int> wrappedF() {
+    std::promise<int> p;
+    std::future<int> result = p.get_future();
+    f([p = std::move(p)](int i) mutable { p.set_value(i); });
+    return result;
+  }
+~~~
+
+The dance required to accomplish this is difficult to follow and explain, especially for intermediate C++ developers. Making `std::future`'s constructor take in a resolver function simplifies this common operation.
+
+~~~C++
+  future<int> wrappedF() {
+    return future( [](auto resolve, auto reject) {
+        f(resolve);
+    });
+  }
+~~~
 
 ## Scalability 
 
