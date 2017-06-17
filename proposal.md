@@ -29,13 +29,13 @@ Reply-to:  Felix Petriconi felix{at}petriconi[dotnet], David Sankel camior{at}gm
 
 The standard library needs a high-quality vocabulary type to represent asynchronous values. Having many variations of this concept in the wild is a pain point, but, even worse, the judicious use of "callback soup" makes asynchronous code difficult to develop and maintain. Unfortunately, based on the experience of the authors in real-world, production applications, neither the crippled `std::future`, nor the extensions proposed in the Concurrency TS are going to remedy the situation.
 
-In the negative, we recommend against adoption of the `std::future` related extensions in the Concurrency TS. In the positive, we provide recommendations for an alternative that we feel will meet the demands of real world applications and, more importantly, gain widespread adoption. The features we propose are based on a combination of characteristics of [Adobe stlab's future](http://www.stlab.cc/libraries/concurrency/future/future/) and [Bloomberg dplp's promise](https://github.com/camio/dpl/blob/master/dplp/dplp_promise.h). The latter was presented at C++Now 2017 in [The Mathematical Underpinnings of Promises in C++](https://www.youtube.com/watch?v=2OY0Zn3oBCE) and [Promises in C++: The Universal Glue for Asynchronous Programs](https://www.youtube.com/watch?v=pKMZjd9CFnw).
+In the negative, we recommend against adoption of the `std::future` related extensions in the C++17 Concurrency TS. In the positive, we provide recommendations for an alternative that we feel will meet the demands of real world applications and, more importantly, gain widespread adoption. The features we propose are based on a combination of characteristics of [Adobe stlab's future](http://www.stlab.cc/libraries/concurrency/future/future/) and [Bloomberg dplp's promise](https://github.com/camio/dpl/blob/master/dplp/dplp_promise.h). The latter was presented at C++Now 2017 in [The Mathematical Underpinnings of Promises in C++](https://www.youtube.com/watch?v=2OY0Zn3oBCE) and [Promises in C++: The Universal Glue for Asynchronous Programs](https://www.youtube.com/watch?v=pKMZjd9CFnw).
 
 # III. Motivation and Scope
 
 ## Copyable future
 
-A common use case in graphs of execution is that the result of an asynchronous calculation is needed as an argument for more than one further asynchronous operation. The current design of `std::future` is limited to one continuous operation, to one `.then()`, because it accepts only an r-value `std::future` as argument. So the `std::future` must be moved into the continuation and after that it cannot be used as an argument for an other continuation.
+A common use case in graphs of execution is that the result of an asynchronous calculation is needed as an argument for more than one further asynchronous operation. The current design of `std::future` is limited to one continuous operation, to one `.then()`, because it accepts only an rvalue `std::future` as argument. So the `std::future` must be moved into the continuation and after that it cannot be used as an argument for an other continuation.
 
 The support of a split would close the current gab in symmetry of the interface design by the C++17 TS, that only specifies a join.
 
@@ -94,7 +94,7 @@ The problem is exacerbated when `then` is called on the result of a `when_all` o
   
   auto answer = std::when_all(std::move(an), std::move(swer)).then( 
     [](std::future<std::tuple<std::future<int>, std::future<int>>> x) {
-      auto t = x.get();
+      std::tuple<std::future<int>, std::future<int>> t = x.get();
       std::cout << get<0>(t).get() + get<1>(t).get();
     });
 ~~~
@@ -104,7 +104,7 @@ This code is difficult to reason about. First, the tuple must be extracted from 
 So the code could then be written like this:
 
 ~~~C++
-  future<inr> an = async([]{ return 40; });
+  future<int> an = async([]{ return 40; });
   future<int> swer = async([]{ return 2; });
   
   auto answer = when_all(an, swer).then( 
@@ -154,7 +154,7 @@ In the snippet above, reproduced below, what is the type of `when_all(an, swer)`
     });
 ~~~
 
-We propose that its type should be `future<int, int>`. Extending `future`s with the ability to carry multiple types has a great convenience due to how `then` is used. To create a multi-valued future, one can use `when_all` or return a `std::tuple` object in a continuation.
+We propose that its type should be `future<int, int>`. Extending `future`'s with the ability to carry multiple types has a great convenience due to how `then` is used. To create a multi-valued future, one can use `when_all` or return a `std::tuple` object in a continuation.
 
 What should the type be of `answer` above? We propose that instead of using the `void` keyword as a special case, we instead use `future<>` to represent a future that carries no values. This has a great harmony with how continuation functions are specified.
 
