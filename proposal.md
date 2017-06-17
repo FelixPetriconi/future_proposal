@@ -11,6 +11,19 @@ Project: Programming Language C++, Library Working Group
 Reply-to:  Felix Petriconi felix{at}petriconi[dotnet], David Sankel camior{at}gmail[dotcom], Sean Parent sean.parent{at}gmail[dotcom]
 
 # I. Table of Contents
+ * [I. Table of Contents](#i-table-of-contents)
+ * [II. Introduction](#ii-introduction)
+ * [III. Motivation and Scope](#iii-motivation-and-scope)
+    * [Copyable future](#copyable-future)
+    * [Cancellation of futures](#cancellation-of-futures)
+    * [Simplified interface](#simplified-interface)
+    * [Zero and Multi-Valued Futures](#zero-and-multi-valued-futures)
+    * [Simplifying Future Creation](#simplifying-future-creation)
+    * [Scalability](#scalability)
+    * [Executors](#executors)
+    * [Joins](#joins)
+ * [IV. Impact On the Standard](#iv-impact-on-the-standard)
+ * [V. Acknowledgments](#v-acknowledgments)
 
 # II. Introduction
 
@@ -34,16 +47,16 @@ So it is necessary that futures become copyable and the following example of mul
    a.then([](int x){ /* also do something else. */ }
 ~~~
 
-If any of the future type arguments are move only, then the future itself is move only, and may only have a single continuation. A future which is an rvalue also may only have a sinlge continuation attached and this allows optimization to avoid unessary copies of values passed to continuations.
+If any of the future type arguments are move only, then the future itself is move only, and may only have a single continuation. A future which is an rvalue also may only have a single continuation attached and this allows optimization to avoid unnecessary copies of values passed to continuations.
 
 ## Cancellation of futures
 
-For various reasons, the result of an asynchronous operation and its continuations may no longer be needed during the course of execution; e.g. the application's user has canceled an operation, or a subsequent operation replaces the result or yields it unessary. The current design of `std::future` and the TS does not support any kind of cancellation. Instead, it is required to wait for a future's fulfillment even when the result is not needed anymore. This is a waste of resources, especially on e.g. mobile devices.
+For various reasons, the result of an asynchronous operation and its continuations may no longer be needed during the course of execution; e.g. the application's user has canceled an operation, or a subsequent operation replaces the result or yields it unnecessary. The current design of `std::future` and the TS does not support any kind of cancellation. Instead, it is required to wait for a future's fulfillment even when the result is not needed anymore. This is a waste of resources, especially on e.g. mobile devices.
 Even if it were possible to implement cancellation on top of the existing design, it would be preferable for futures to have this capability built-in. 
 
 We think it necessary that a future can be "destructed" before it starts execution of its associated task. In case that it has started, it should finish, but the result would be dropped and the attached continuations should not be executed.
 
-Tasks, indicated as circles, and futures, indicated as squares, build a dependency graph of execution in the following image.
+In the following an exemplary use case illustrates how the cancellation of a future flows back through the graph. Tasks, indicated as circles, and futures, indicated as squares, build here a dependency graph of execution.
 
 ![](images/FutureChain01.png)   
 
@@ -170,44 +183,44 @@ The dance required to accomplish this is difficult to follow and explain, especi
 
 ---
 
-The STLab currency library takes a different approach. Conceptually, a future is a token used to seperate the result of a function from the invocation of the function. The invocation portion of the function is refered to as the task. The code that seperates these two components is refered to a package:
+The STLab currency library takes a different approach. Conceptually, a future is a token used to separate the result of a function from the invocation of the function. The invocation portion of the function is referred to as the task. The code that separates these two components is referred to a package:
 
 ```cpp
-auto [task, result] = package([](int x){ return x * 2; });
-result.then([](int x){ cout << x << endl; }
-task(4);
+  auto [task, result] = package([](int x){ return x * 2; });
+  result.then([](int x){ cout << x << endl; }
+  task(4);
 ```
 Will print:
 ```
-8
+  8
 ```
 
 This pattern can be used with a trivial function to convert a packaged task into a simple promise:
 
 ```cpp
-auto [promise, result] = package([](int x){ return x; }); // identity function
+  auto [promise, result] = package([](int x){ return x; }); // identity function
 ```
 
-`package()` establishes a root for a dependency tree. There are 3 pieces of information that can be communicated through this root. The value or exception flow from the task to the future, and cancelation flows from future to task. All of this information is available through this interface, though the interface is biased towards simple values:
+`package()` establishes a root for a dependency tree. There are 3 pieces of information that can be communicated through this root. The value or exception flow from the task to the future, and cancellation flows from future to task. All of this information is available through this interface, though the interface is biased towards simple values:
 
 ```cpp
-template <class F>
-class cancel_notifer {
-   optional<F> _f;
-public:
-   cancel_notifer(F f) : _f(move(f)) { }
-   ~cancel_notifer() { if (_f) _f.get()(); }
-   void reset() { _f.reset(); }
-};
+  template <class F>
+  class cancel_notifer {
+     optional<F> _f;
+  public:
+     cancel_notifer(F f) : _f(move(f)) { }
+     ~cancel_notifer() { if (_f) _f.get()(); }
+     void reset() { _f.reset(); }
+  };
 
 
-auto [task, result] = package([_notifier = cancel_notifier([] {
-   cout << "was canceled" << endl;
-})](variant<value_type, exception_ptr> x) {
-   _notifier.reset();
-   if (auto p = x.get_if<exception_ptr>()) return rethrow_exception(*p);
-   return move(x).get<value_type>();
-});
+  auto [task, result] = package([_notifier = cancel_notifier([] {
+     cout << "was canceled" << endl;
+  })](variant<value_type, exception_ptr> x) {
+     _notifier.reset();
+     if (auto p = x.get_if<exception_ptr>()) return rethrow_exception(*p);
+     return move(x).get<value_type>();
+  });
 ```
 
 ## Scalability 
