@@ -10,6 +10,8 @@ Project: Programming Language C++, Library Working Group
 
 Reply-to:  Felix Petriconi felix{at}petriconi[dotnet], David Sankel camior{at}gmail[dotcom], Sean Parent sean.parent{at}gmail[dotcom]
 
+This version of the document is available [online](https://github.com/FelixPetriconi/future_proposal/tree/v1.0/proposal.md)
+
 # I. Table of Contents
  * [I. Table of Contents](#i-table-of-contents)
  * [II. Introduction](#ii-introduction)
