@@ -39,7 +39,7 @@ In the negative, we recommend against adoption of the `std::future` related exte
 
 A common use case in graphs of execution is that the result of an asynchronous calculation is needed as an argument for more than one further asynchronous operation. The current design of `std::future` is limited to one continuous operation, to one `.then()`, because it accepts only an rvalue `std::future` as argument. So the `std::future` must be moved into the continuation and after that it cannot be used as an argument for an other continuation.
 
-The support of a split would close the current gab in symmetry of the interface design by the C++17 TS, that only specifies a join.
+The support of a split would close the current gap in symmetry of the interface design by the C++17 TS, that only specifies a join.
 
 So it is necessary that futures become copyable and the following example of multiple continuations into different directions would be possible. 
 
