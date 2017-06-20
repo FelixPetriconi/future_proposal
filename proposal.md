@@ -147,7 +147,7 @@ In cases where error handling is necessary, an optional second argument to `then
 In the snippet above, reproduced below, what is the type of `when_all(an, swer)`?
 
 ~~~C++
-  future<inr> an = async([]{ return 40; });
+  future<int> an = async([]{ return 40; });
   future<int> swer = async([]{ return 2; });
   
   auto answer = when_all(an, swer).then( 
