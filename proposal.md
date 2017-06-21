@@ -83,7 +83,7 @@ According to the C++17 TS, `std::future`'s `then` member function has a single a
 
 ~~~C++
   std::future<int> getTheAnswer = std::async([]{ return 42; };
-  auto next = getTheAnswer.then([](std::future<int> x) { std::cout << x.get(); };
+  auto next = getTheAnswer.then([](std::future<int> x) { std::cout << x.get(); });
 ~~~
 
 The passed `std::future` object is in a completed state (e.g. already fulfilled with a value or rejected with an exception) when the continuation is called.  While this is a clever way to communicate the fulfilled or rejected value to the continuation, use of the future object as a "value or error" object instead of its primary purpose (a potentially *future* value or error) is confusing.
