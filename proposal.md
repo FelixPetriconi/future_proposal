@@ -46,7 +46,7 @@ So it is necessary that futures become copyable and the following example of mul
 ~~~C++
    future<int> a;
    a.then([](int x){ /* do something */ });
-   a.then([](int x){ /* also do something else. */ }
+   a.then([](int x){ /* also do something else. */ });
 ~~~
 
 If any of the future type arguments are move only, then the future itself is move only, and may only have a single continuation. A future which is an rvalue also may only have a single continuation attached and this allows optimization to avoid unnecessary copies of values passed to continuations.
