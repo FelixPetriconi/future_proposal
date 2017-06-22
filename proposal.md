@@ -185,7 +185,7 @@ The dance required to accomplish this is difficult to follow and explain, especi
 
 ---
 
-The STLab currency library takes a different approach. Conceptually, a future is a token used to separate the result of a function from the invocation of the function. The invocation portion of the function is referred to as the task. The code that separates these two components is referred to a package:
+The STLab concurrency library takes a different approach. Conceptually, a future is a token used to separate the result of a function from the invocation of the function. The invocation portion of the function is referred to as the task. The code that separates these two components is referred to a package:
 
 ```cpp
   auto [task, result] = package([](int x){ return x * 2; });
